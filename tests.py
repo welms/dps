@@ -1,4 +1,19 @@
-from dps4 import *
+from dps import *
+import re
+
+standard_spells = [
+    InitialDamageSpell('Animated Dagger', 0.29, 15, 51178),
+    InitialDamageSpell('Arcane Bewilderment', 0.29, 30, 44607),
+    InitialDamageSpell('Crystal Blast', 1.0, 1.5, 76498),
+    InitialDamageSpell('Earthquake', 1, 10, 77448, 8),
+    InitialDamageSpell('Ice Storm', 1.5, 4.5, 47762, 12),
+    InitialDamageSpell('Petrify', 1.5, 22.5, 75916),
+    InitialDamageSpell("Theurgist's Detonation", 0.29, 30, 106423, 8),
+    DotSpell('Fiery Annihilation', 0.58, 4, 105713, 2, 7368, 12),
+    DotSpell('Shattered Earth', 1.5, 20, 29348, 1.0, 18179, 5.0, 12),
+    DotSpell('Vampire Bats', 1.16, 6, 76292, 4.0, 14522, 24.0),
+    WindsOfVeliousSpell(0.58, 6, 82084, 2.7, 17332, 33.0),
+    ]
 
 #----------------------------------------------------------------------
 epsilon = 1e-10
@@ -260,35 +275,122 @@ def test_spell_string():
     ch.cast(spell1)
     assert ch.castable_spell_string(ch.last_cast()) == 'AB CD'
 
-def test_spell_string2():
-    spells = [
-        InitialDamageSpell('Animated Dagger', 0.29, 15, 51178),
-        InitialDamageSpell('Arcane Bewilderment', 0.29, 30, 44607),
-        InitialDamageSpell('Crystal Blast', 1.0, 1.5, 76498),
-        # InitialDamageSpell('Crystal Blast w/CD', 1.0, 1.5, 136032),
-        InitialDamageSpell('Earthquake', 1, 10, 77448, 8),
-        DotSpell('Fiery Annihilation', 0.58, 4, 105713, 2, 7368, 12),
-        InitialDamageSpell('Ice Storm', 1.5, 4.5, 47762, 12),
-        #InitialDamageSpell("Master's Strike", 1.16, 60, 128622),
-        InitialDamageSpell('Petrify', 1.5, 22.5, 75916),
-        DotSpell('Shattered Earth', 1.5, 20, 29348, 1.0, 18179, 5.0, 12),
-        InitialDamageSpell("Theurgist's Detonation", 0.29, 30, 106423, 8),
-        DotSpell('Vampire Bats', 1.16, 6, 76292, 4.0, 14522, 24.0),
-        WindsOfVeliousSpell(0.58, 6, 82084, 2.7, 17332, 33.0),
-        ]
-    ch = CastHistory(spells, 1, 20)
-    ch.cast(spells[10])
-    ch.cast(spells[8])
-    ch.cast(spells[4])
-    ch.cast(spells[9])
-    ch.cast(spells[7])
-    ch.cast(spells[2])
-    ch.cast(spells[6])
-    ch.cast(spells[4])
-    ch.cast(spells[10])
+
+#----------------------------------------------------------------------
+def test_partial():
+    """Test partial cast damage calculations."""
+    spell1 = InitialDamageSpell('spell1', 10, 1, 100)
+    ch = CastHistory([spell1], 1, 5)
+    ch.cast(spell1)
+    assert ch.total_damage == 50
+    spell2 = DotSpell('spell2',
+                      cast_time=10,
+                      cooldown=1,
+                      initial_damage=100,
+                      period=1,
+                      period_damage=10,
+                      duration=10)
+    ch = CastHistory([spell2], 1, 5)
+    ch.cast(spell2)
+    assert ch.total_damage == 55
+    ch = CastHistory([spell2], 1, time_limit=11)
+    ch.cast(spell2)
+    assert ch.total_damage == 120
+
+
+#----------------------------------------------------------------------
+def make_leaves():
+    """Generate the leaves.csv file."""
+    # one target, 8 second encounter duration
+    stack = [CastHistory(standard_spells, 1, 8.0)]
+    leaves_found = 0      # just info to display
+    start_time = time.time()
+    ofile = open('leaves.csv', mode='w')
+    best_ch = None
+    while len(stack) > 0:
+        ch = stack.pop()
+        if not ch.can_cast_something():
+            # We've reached a leaf node. Write it to disk.
+            ofile.write('{}\t{}\n'.format(ch.total_damage, repr(ch)))
+            # Check if it's the best damage so far.
+            leaves_found += 1
+            if (best_ch == None or
+                ch.total_damage > best_ch.total_damage):
+                best_ch = ch
+            # nothing more to be done with a leaf node
+            continue
+        # not at a leaf, cast the rest
+        for spell in ch.castable_spells():
+            ch_copy = ch.duplicate()
+            ch_copy.cast(spell)
+            stack.append(ch_copy)
+    ofile.close()
+
+def test_ub():
+    """test upper bound"""
+    try:
+        leaves = open('leaves.csv')
+    except:
+        make_leaves()
+        leaves = open('leaves.csv')
+    best_ch = CastHistory(standard_spells, 1, 8.0)
+    # brute force search shows this is the maximum damage cast history
+    best_ch.from_repr('<CastHistory [WV,SE,FA,TD,E,CB,AD,FA]>')
+    # create a dict of upper bound values of all ancestors of this cast
+    # history
+    ubounds = {}
+    ch = CastHistory(standard_spells, 1, 8.0)
+    for spell_cast in best_ch._casts:
+        ch.cast(spell_cast.spell)
+        ubounds[repr(ch)] = ch.upper_bound
+    # Now iterate through the leaves file. Print any leaves that have a total
+    # damage greater than any upper bound in our dict.
+    line_re = re.compile('([0-9]+\.[0-9]*)\t(.+)$')
+    upper_bound_exceeded = False
+    for line in leaves:
+        dmg, leaf_repr = line_re.match(line).groups()
+        dmg = float(dmg)
+        for ub_repr, bound in ubounds.iteritems():
+            if dmg > bound:
+                print dmg, leaf_repr, 'exceeds', bound, ub_repr
+                upper_bound_exceeded = True
+    assert not upper_bound_exceeded
+
+
+#----------------------------------------------------------------------
+def test_repr():
+    """Test CastHistory.__repr__"""
+    # make a cast history with huge time limit so we can be sure everything
+    # can be cast.
+    ch = CastHistory(standard_spells, 1, 1000)
+    assert repr(ch) == '<CastHistory []>'
+    assert ch.total_damage == 0.0
+    ch_repr = CastHistory(standard_spells, 1, 1000)
+    ch_repr.from_repr(repr(ch))
+    assert ch_repr.total_damage == 0.0
+    ch.cast(standard_spells[0])
+    assert repr(ch) == '<CastHistory [AD]>'
+
+    ch = CastHistory(standard_spells, 1, 1000)
+    # cast every spell
+    for spell in standard_spells:
+        ch.cast(spell)
+    # expect that the resulting representation reflects this
+    ch_repr = repr(ch)
+    assert ch_repr == '<CastHistory [AD,AB,CB,E,IS,P,TD,FA,SE,VB,WV]>'
+    # build a new cast history from the representation.
+    rebuilt_ch = CastHistory(standard_spells, 1, 1000)
+    rebuilt_ch.from_repr(ch_repr)
+    # verify the cast history built from the repr string is the same as the
+    # original
+    assert repr(rebuilt_ch) == ch_repr
+    assert rebuilt_ch.total_damage == ch.total_damage
+    assert rebuilt_ch.upper_bound == ch.upper_bound
+
+def show():
+    ch = CastHistory(standard_spells, 1, 20)
+    ch.from_repr('<CastHistory [FA,WV,VB,TD,E,FA,CB,AB,CB,FA,SE,CB,AD,FA,CB,E,CB,FA]>')
     ch.print_history()
 
-
-
 if __name__ == '__main__':
-    test_wov_lart()
+    show()
