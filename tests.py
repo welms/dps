@@ -392,5 +392,37 @@ def show():
     ch.from_repr('<CastHistory [FA,WV,VB,TD,E,FA,CB,AB,CB,FA,SE,CB,AD,FA,CB,E,CB,FA]>')
     ch.print_history()
 
+from dps_ga import pick, GaCastHistory
+
+def test_pick():
+    random.seed()
+    cdf = [[1, 'a']]
+    for i in xrange(2, 11):
+        prev = cdf[i-2]
+        cdf.append([i+prev[0], chr(ord(prev[1])+1)])
+    for pair in cdf:
+        pair[0] /= float(cdf[-1][0])
+    pick_count = {}
+    for i, letter in cdf:
+        pick_count[letter] = 0
+    for i in xrange(100):
+        pick_count[pick(cdf)] += 1
+    assert pick_count[cdf[0][1]] < pick_count[cdf[-1][1]]
+    for i, letter in cdf:
+        print letter, '#' * pick_count[letter]
+
+def test_interleave():
+    ch1 = GaCastHistory(standard_spells, 1, 8.4).random_fill()
+    ch2 = GaCastHistory(standard_spells, 1, 8.4).random_fill()
+    print repr(ch1)
+    print repr(ch2)
+    print repr(ch1._breed_interleave(ch2))
+
+def test_reverse():
+    ch = GaCastHistory(standard_spells, 1, 8.4).random_fill()
+    print ch
+    ch._mutate_reverse()
+    print ch
+
 if __name__ == '__main__':
-    show()
+    test_reverse()
