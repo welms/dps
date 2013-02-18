@@ -137,6 +137,9 @@ Desktop.ini
 
 *.py[co]
 
+# Coverage tool
+htmlcov
+
 # Packages
 *.egg
 *.egg-info
