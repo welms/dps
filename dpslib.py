@@ -42,6 +42,9 @@ class CastHistory(object):
     def __len__(self):
         return len(self._casts)
 
+    def __iter__(self):
+        return iter(self._casts)
+
     def __repr__(self):
         """ Return a string representation of the casts in this history. """
         delimited_casts = ''
