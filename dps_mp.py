@@ -7,15 +7,8 @@ import os
 import sys
 import time
 
-# Number of seconds that spell casting can occur.  The duration of the
-# fight, in other words.
-TIME_LIMIT = 14.0
-
 # Cooldown, in seconds, between using abilities (spells or combat arts).
 ABILITY_RECOVERY = 0.3
-
-# Number of targets in encounter.
-NUM_TARGETS = 1
 
 POISON_PILL = -1
 
@@ -667,7 +660,7 @@ class Stack(object):
 
 REPORT_INTERVAL = 10.0
 
-def reporter(global_stack, ns, io_lock):
+def reporter(global_stack, time_limit, ns, io_lock):
     """Periodically write snapshot of process states and results to stdout"""
     # note we are strictly reading from the namespace and don't require
     # consistency, so we don't take the namespace lock which would slow down
@@ -689,7 +682,7 @@ def reporter(global_stack, ns, io_lock):
                 if pid == 'global':
                     continue
                 print 'pid{: 5}'.format(pid), '#' * depth
-            print 'damage: {:,.0f} ({:,.0f} dps)'.format(ns.best_dmg, ns.best_dmg/TIME_LIMIT)
+            print 'damage: {:,.0f} ({:,.0f} dps)'.format(ns.best_dmg, ns.best_dmg/time_limit)
             print ns.best_ch_repr
             print
             sys.stdout.flush()
@@ -855,14 +848,14 @@ def find_best_cast_history(spells, num_targets, time_limit):
     ns.stack_depths = {}
     ns.leaf_counts = {}
     start_time = time.time()
-    nprocs = max(1, multiprocessing.cpu_count() - 1)  # avoid 100% utilization
+    nprocs = max(1, multiprocessing.cpu_count()-1)  # avoid 100% utilization
     procs = []
     for i in range(nprocs):
         p = multiprocessing.Process(target=worker, args=(stack, lock, ns, io_lock, idle_workers_sem))
         procs.append(p)
         p.start()
     # start the reporter process
-    p = multiprocessing.Process(target=reporter, args=(stack, ns, io_lock))
+    p = multiprocessing.Process(target=reporter, args=(stack, time_limit, ns, io_lock))
     procs.append(p)
     p.start()
     # block until there are no live nodes left
@@ -875,9 +868,9 @@ def find_best_cast_history(spells, num_targets, time_limit):
         p.join()
 
     print 'Encounter size {} mob{}, time limit {}s'.format(
-        NUM_TARGETS,
-        '' if NUM_TARGETS==1 else 's',
-        TIME_LIMIT
+        num_targets,
+        '' if num_targets==1 else 's',
+        time_limit
     )
     print 'examined {:,} leaves in {}'.format(
         ns.leaves,
@@ -886,10 +879,10 @@ def find_best_cast_history(spells, num_targets, time_limit):
     best_ch.from_repr(ns.best_ch_repr)
     print 'best result {:,.0f} damage ({:,.0f} dps)'.format(
         best_ch.total_damage,
-        best_ch.total_damage / float(TIME_LIMIT),
+        best_ch.total_damage / float(time_limit),
     )
     best_ch.print_history()
-    print '*** RUN COMPLETE ***'
+    return best_ch
 
 
 def main():
@@ -910,8 +903,8 @@ def main():
     #InitialDamageSpell('spell 2', 0.5, 1, 100),
     # InitialDamageSpell('Crystal Blast w/CD', 1.0, 1.5, 136032),
     #InitialDamageSpell("Master's Strike", 1.16, 60, 128622),
-    find_best_cast_history(spells, NUM_TARGETS, TIME_LIMIT)
 
+    find_best_cast_history(spells, 1, 9.5)
 
 if __name__ == '__main__':
     main()
