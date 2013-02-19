@@ -233,13 +233,12 @@ def report(gen, population):
         total_damage += dmg * count
         total_count += count
     mean = total_damage / total_count
-    print 'gen:{:< 4}  bins:{:< 4}  mean:{:< 8,.0f}  best: {:,.0f}'.format(
-        gen, len(damages), mean, best.total_damage)
+    #print 'gen:{:< 4}  bins:{:< 4}  mean:{:< 8,.0f}  best: {:,.0f}'.format(
+        #gen, len(damages), mean, best.total_damage)
     return len(damages), best
 
 
-def find_best_cast_history(spells, num_targets, time_limit, elite=None):
-    start_time = time.time()
+def find_best_cast_history(spells, num_targets, time_limit, elite=None, throttle=0):
     MAX_POPULATION = 1000
     MAX_GENERATIONS = 100
     MAX_MUTATION_CHANCE = 0.5
@@ -268,7 +267,6 @@ def find_best_cast_history(spells, num_targets, time_limit, elite=None):
         population_cdf = make_population_cdf(population)
         children = []
         cur_mutation_chance -= nudge
-        #print 'mutation chance', cur_mutation_chance
         for i in xrange(num_to_breed):
             result = breed(population_cdf)
             if random.random() < cur_mutation_chance:
@@ -276,12 +274,12 @@ def find_best_cast_history(spells, num_targets, time_limit, elite=None):
             if random.random() < cur_mutation_chance:
                 result[-2].mutate()
             children += result[2:]
+            if throttle:
+                time.sleep(throttle)
         # init next generation to current population plus children
         next_gen = population + children
         next_gen_cdf = make_population_cdf(next_gen)
         population = [best_ever]
-        #while len(population) < MAX_POPULATION:
-            #population.append(pick_tournament(next_gen_cdf))
         # sort next generation by fitness, descending
         next_gen.sort(key=lambda ch:ch.total_damage, reverse=True)
         # take the fittest of the previous population plus the children as the
@@ -326,7 +324,8 @@ def multirun(num_targets, enc_time_limit, elite=None):
     best.print_history()
     return best
 
-def main():
+
+def stmain():
     num_targets = 1
     time_limit = 9.5
     ch = GaCastHistory(standard_spells, num_targets, time_limit)
