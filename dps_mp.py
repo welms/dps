@@ -881,7 +881,7 @@ def find_best_cast_history(spells, num_targets, time_limit):
         best_ch.total_damage,
         best_ch.total_damage / float(time_limit),
     )
-    best_ch.print_history()
+    #best_ch.print_history()
     return best_ch
 
 
